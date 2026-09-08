@@ -1,0 +1,40 @@
+# Core
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+aiosqlite
+
+# Image processing
+opencv-python-headless
+Pillow
+pillow-heif
+imagehash
+
+# EXIF
+piexif
+exifread
+
+# ML
+# Note: torch/torchvision may need separate install:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+scikit-learn
+numpy
+scipy
+
+# Folder watching
+watchdog
+
+# Utilities
+pydantic
+pydantic-settings
+python-dotenv
+aiofiles
+httpx
+schedule
+pyyaml
+

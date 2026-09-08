@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Photo Selection System — ระบบคัดเลือกภาพราชกิจ</title>
+  <meta name="description" content="ระบบคัดเลือกภาพงานราชกิจฯ แบบกึ่งอัตโนมัติ ด้วย AI บน Laptop" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+
+  <!-- Alpine.js -->
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body x-data="photoApp()" x-init="init()">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">📸</div>
+      <div>
+        <div class="brand-name">PHOTOSS</div>
+        <div class="brand-sub">AI Photo Selection</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item" :class="{ active: page === 'upload' }" @click="page = 'upload'" id="nav-upload">
+        <span class="nav-icon">📂</span>
+        <span>นำเข้ารูปภาพ</span>
+      </button>
+      <button class="nav-item" :class="{ active: page === 'review' }" @click="page = 'review'" id="nav-review">
+        <span class="nav-icon">🔍</span>
+        <span>ตรวจสอบ</span>
+      </button>
+      <button class="nav-item" :class="{ active: page === 'dashboard' }" @click="page = 'dashboard'; loadDashboard()" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+      </button>
+    </nav>
+
+    <!-- System status -->
+    <div class="sidebar-status">
+      <div class="status-row">
+        <span class="status-dot" :class="systemOnline ? 'online' : 'offline'"></span>
+        <span class="mono" x-text="systemOnline ? 'SYSTEM ONLINE' : 'OFFLINE'"></span>
+      </div>
+      <div class="status-row mono small" x-text="'ML: ' + mlMode"></div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main-content">
+
+    <!-- ╔═════════════════════════╗ -->
+    <!-- ║  INGESTION & SCAN PAGE  ║ -->
+    <!-- ╚═════════════════════════╝ -->
+    <section x-show="page === 'upload'" x-transition class="page">
+      <div class="page-header">
+        <h1>นำเข้ารูปภาพ</h1>
+        <p class="page-sub">เลือกสแกนโฟลเดอร์ในเครื่อง (รวดเร็ว ไม่ต้องอัปโหลด) หรืออัปโหลดผ่าน WiFi</p>
+      </div>
+
+      <!-- Mode Switcher -->
+      <div class="view-controls" style="margin-bottom: 20px;">
+        <button class="btn-sm" :class="ingestMode === 'local' ? 'active' : ''" @click="ingestMode = 'local'" id="mode-local-btn">
+          📂 สแกนโฟลเดอร์ในเครื่อง (แนะนำ - เร็วที่สุด)
+        </button>
+        <button class="btn-sm" :class="ingestMode === 'upload' ? 'active' : ''" @click="ingestMode = 'upload'" id="mode-upload-btn">
+          ⬆ อัปโหลดผ่าน WiFi / ลากวางไฟล์
+        </button>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!-- TAB 1: DIRECT LOCAL FOLDER SCAN               -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <div x-show="ingestMode === 'local'" x-transition>
+        <div class="card" style="border-left: 4px solid var(--teal);">
+          <h2 class="card-title">📂 สแกนไฟล์ภาพจากเครื่องโดยตรง</h2>
+          <p class="muted small" style="margin-bottom: 16px;">
+            ระบบจะอ่านและประมวลผลไฟล์ภาพจาก Harddisk/SSD ของคุณทันที <strong>ไม่ต้องเสียเวลาส่งผ่านเครือข่าย</strong>
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <!-- Report Name -->
+            <div>
+              <label class="label-sm">ชื่อรายงาน / กิจกรรม</label>
+              <input
+                type="text"
+                class="input"
+                style="width: 100%; margin-top: 4px;"
+                placeholder="เช่น งานพระราชพิธี 8 ก.ย. (เว้นว่างไว้จะใช้ชื่อโฟลเดอร์)"
+                x-model="newBatchName"
+                id="local-batch-name"
+              />
+            </div>
+
+            <!-- Folder Path Input -->
+            <div>
+              <label class="label-sm">ตำแหน่งโฟลเดอร์ในเครื่อง (Folder Path)</label>
+              <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <input
+                  type="text"
+                  class="input"
+                  style="flex: 1; font-family: 'Share Tech Mono', monospace;"
+                  placeholder="เช่น C:\Users\YourName\Pictures\Event_Photos"
+                  x-model="localFolderPath"
+                  id="folder-path-input"
+                />
+              </div>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div x-show="folderPresets.length > 0">
+              <div class="label-sm" style="margin-bottom: 6px;">⚡ ทางลัดโฟลเดอร์ในเครื่อง:</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <template x-for="p in folderPresets" :key="p.path">
+                  <button type="button" class="btn-sm" @click="applyPreset(p.path)">
+                    <span x-text="p.name"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <!-- Options -->
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <input type="checkbox" id="chk-recursive" x-model="recursiveScan" style="accent-color: var(--teal); width: 16px; height: 16px; cursor: pointer;" />
+              <label for="chk-recursive" style="cursor: pointer; font-size: 0.9rem;">รวมไฟล์ในโฟลเดอร์ย่อย (Include Subdirectories)</label>
+            </div>
+
+            <!-- Action Button -->
+            <div style="margin-top: 10px;">
+              <button class="btn btn-accent" style="padding: 12px 24px; font-size: 1rem;" @click="quickScanLocal()" id="btn-quick-scan">
+                🚀 เริ่มสแกน &amp; ตรวจสอบภาพในเครื่องทันที
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!-- TAB 2: NETWORK / DRAG & DROP UPLOAD           -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <div x-show="ingestMode === 'upload'" x-transition>
+        <div class="card">
+          <h2 class="card-title">⬆ อัปโหลดไฟล์ภาพ</h2>
+          
+          <div style="margin-bottom: 14px;">
+            <label class="label-sm">ชื่อรายงาน / งาน (ระบุหรือไม่ก็ได้)</label>
+            <input
+              type="text"
+              class="input"
+              style="width: 100%; margin-top: 4px;"
+              placeholder="เช่น งานพระราชพิธี 8 ก.ย. (เว้นว่างไว้ระบบจะตั้งให้อัตโนมัติ)"
+              x-model="newBatchName"
+              id="batch-name-input"
+            />
+          </div>
+
+          <!-- Upload area directly accessible -->
+          <div class="upload-zone"
+               @dragover.prevent
+               @drop.prevent="handleDrop($event)"
+               id="upload-dropzone">
+            <div class="upload-icon">📁</div>
+            <p style="font-size: 1.1rem; font-weight: 500;">ลากวางไฟล์ภาพที่นี่ หรือกดเลือกไฟล์</p>
+            <p class="small muted" style="margin-top: 4px;">รองรับทุกนามสกุลภาพ: .JPG, .JPEG, .PNG, .HEIC (iPhone), .TIF, .WEBP</p>
+            <input type="file" multiple accept="image/*,.jpg,.jpeg,.png,.heic,.heif,.tif,.tiff,.JPG,.JPEG,.PNG,.HEIC,.HEIF" id="file-input"
+                   class="file-input" @change="handleFileInput($event)" />
+            <label for="file-input" class="btn btn-outline" style="margin-top: 12px; cursor: pointer;">📂 เลือกไฟล์ภาพจากเครื่อง</label>
+          </div>
+
+          <!-- Upload progress list -->
+          <div class="upload-list" x-show="uploadQueue.length > 0" style="margin-top: 14px;">
+            <template x-for="item in uploadQueue.slice(-10)" :key="item.name">
+              <div class="upload-item">
+                <span class="mono small" x-text="item.name"></span>
+                <span class="badge" :class="item.status === 'done' ? 'badge-ok' : item.status === 'error' ? 'badge-err' : 'badge-info'"
+                      x-text="item.status === 'uploading' ? 'กำลังส่ง...' : item.status === 'done' ? 'สำเร็จ' : 'Error'"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active batch info & Live Progress (Shows for both modes) -->
+      <template x-if="activeBatch">
+        <div class="card active-batch-card" style="margin-top: 20px;">
+          <div class="batch-header">
+            <div>
+              <div class="label-sm">BATCH ID</div>
+              <div class="mono" x-text="activeBatch.id?.slice(0,8) + '...'"></div>
+            </div>
+            <div>
+              <div class="label-sm">ชื่อรายงาน</div>
+              <div x-text="activeBatch.report_name"></div>
+            </div>
+            <div>
+              <div class="label-sm">STATUS</div>
+              <div class="badge" :class="batchStatus === 'finalizing' ? 'badge-warn' : batchStatus === 'scanning' ? 'badge-info' : 'badge-ok'"
+                   x-text="batchStatus === 'scanning' ? 'กำลังสแกน...' : batchStatus === 'finalizing' ? 'กำลังคัดแยก...' : batchStatus"></div>
+            </div>
+          </div>
+
+          <!-- Progress -->
+          <div class="progress-section">
+            <div class="progress-stats">
+              <span class="mono">✅ <strong x-text="progress.done"></strong> ผ่าน</span>
+              <span class="mono">❌ <strong x-text="progress.failed_technical_filter"></strong> ตก</span>
+              <span class="mono">⏳ <strong x-text="progress.pending"></strong> กำลังประมวลผล</span>
+              <span class="mono">🔴 <strong x-text="progress.errors"></strong> Error</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar" :style="'width:' + progressPercent + '%'"></div>
+            </div>
+            <div class="mono small" x-text="progressPercent + '% (' + progress.total + ' ภาพรวม)'"></div>
+          </div>
+
+          <!-- Complete batch & Actions -->
+          <div class="action-row" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between;">
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" @click="activeBatch = null; batchStatus = 'idle'" id="new-batch-btn">
+                เริ่ม Batch ใหม่
+              </button>
+              <button class="btn btn-accent" @click="completeBatch()" id="complete-batch-btn" x-show="progress.pending === 0 || batchStatus === 'active'">
+                ✅ จัดกลุ่มกิจกรรม (Cluster)
+              </button>
+              <button class="btn btn-primary" @click="goReview()" id="go-review-btn">
+                🔍 ตรวจสอบภาพ →
+              </button>
+            </div>
+            <button class="btn btn-outline" style="border-color: var(--error); color: var(--error);" @click="deleteBatch(activeBatch.id)" id="delete-batch-btn">
+              🗑 ลบ Batch นี้
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Recent batches -->
+      <div class="card" x-show="recentBatches.length > 0" style="margin-top: 20px;">
+        <h2 class="card-title">Batch ล่าสุด</h2>
+        <div class="batch-list">
+          <template x-for="b in recentBatches.slice(0, 10)" :key="b.id">
+            <div class="batch-row" style="display: flex; justify-content: space-between; align-items: center;">
+              <div @click="loadBatchForReview(b.id)" style="cursor: pointer; display: flex; gap: 12px; align-items: center; flex: 1;">
+                <span class="mono small" x-text="b.id.slice(0,8) + '...'"></span>
+                <span x-text="b.report_name || '—'"></span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="badge" :class="b.completed ? 'badge-ok' : 'badge-info'"
+                      x-text="b.completed ? 'สำเร็จ' : 'กำลังดำเนินการ'"></span>
+                <button class="btn-sm" style="background: transparent; color: var(--error); padding: 4px 8px; font-size: 0.95rem; border: 1px solid rgba(255, 77, 106, 0.3);" title="ลบ Batch นี้" @click.stop="deleteBatch(b.id, $event)">
+                  🗑 ลบ
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ╔══════════════╗ -->
+    <!-- ║  REVIEW PAGE  ║ -->
+    <!-- ╚══════════════╝ -->
+    <section x-show="page === 'review'" x-transition class="page">
+      <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1>ตรวจสอบ &amp; คัดเลือกภาพ</h1>
+          <p class="page-sub" x-text="reviewBatchId ? 'Batch: ' + reviewBatchId.slice(0,8) + '...' : 'เลือก Batch จากหน้านำเข้ารูปภาพ'"></p>
+        </div>
+        <button class="btn btn-outline" style="border-color: var(--error); color: var(--error); padding: 6px 14px; font-size: 0.85rem;" x-show="reviewBatchId" @click="deleteBatch(reviewBatchId)">
+          🗑 ลบ Batch นี้
+        </button>
+      </div>
+
+      <!-- No batch selected -->
+      <div class="card" x-show="!reviewBatchId">
+        <p class="muted">กรุณาเลือก Batch จากหน้านำเข้ารูปภาพ หรือรายการด้านล่าง</p>
+        <div class="batch-list" x-show="recentBatches.length" style="margin-top: 12px;">
+          <template x-for="b in recentBatches.filter(x => x.completed).slice(0,8)" :key="b.id">
+            <div class="batch-row" style="display: flex; justify-content: space-between; align-items: center;">
+              <div @click="loadBatchForReview(b.id)" style="cursor: pointer; display: flex; gap: 12px; align-items: center; flex: 1;">
+                <span class="mono small" x-text="b.id.slice(0,8) + '...'"></span>
+                <span x-text="b.report_name || '—'"></span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="badge badge-ok">สำเร็จ</span>
+                <button class="btn-sm" style="background: transparent; color: var(--error); padding: 4px 8px; font-size: 0.95rem; border: 1px solid rgba(255, 77, 106, 0.3);" title="ลบ Batch นี้" @click.stop="deleteBatch(b.id, $event)">
+                  🗑 ลบ
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Review content -->
+      <template x-if="reviewBatchId && reviewData">
+        <div>
+          <!-- Summary bar -->
+          <div class="review-summary card">
+            <div class="summary-stat">
+              <div class="stat-num" x-text="reviewData.total_photos"></div>
+              <div class="stat-label">ภาพทั้งหมด</div>
+            </div>
+            <div class="summary-stat">
+              <div class="stat-num teal" x-text="reviewData.clusters?.length || 0"></div>
+              <div class="stat-label">กิจกรรม</div>
+            </div>
+            <div class="summary-stat">
+              <div class="stat-num gold" x-text="Object.values(selections).filter(v=>v).length"></div>
+              <div class="stat-label">คัดเลือกแล้ว</div>
+            </div>
+            <div class="summary-stat">
+              <div class="stat-num" x-text="reviewData.shortlist_ids?.length || 0"></div>
+              <div class="stat-label">Shortlist AI</div>
+            </div>
+          </div>
+
+          <!-- View mode toggle -->
+          <div class="view-controls">
+            <button class="btn-sm" :class="viewMode==='shortlist' ? 'active' : ''"
+                    @click="viewMode='shortlist'" id="view-shortlist">⭐ Shortlist AI</button>
+            <button class="btn-sm" :class="viewMode==='cluster' ? 'active' : ''"
+                    @click="viewMode='cluster'" id="view-cluster">🗂 ตามกิจกรรม</button>
+            <button class="btn-sm" :class="viewMode==='all' ? 'active' : ''"
+                    @click="viewMode='all'" id="view-all">📋 ทั้งหมด</button>
+          </div>
+
+          <!-- ★ SHORTLIST VIEW -->
+          <div x-show="viewMode === 'shortlist'">
+            <div class="section-header">
+              <h2>⭐ Shortlist — ภาพแนะนำโดย AI</h2>
+              <span class="badge badge-ok" x-text="reviewData.shortlist_ids?.length + ' ภาพ'"></span>
+            </div>
+            <div class="photo-grid">
+              <template x-for="pid in reviewData.shortlist_ids" :key="pid">
+                <div class="photo-card" :class="{ selected: selections[pid], rejected: selections[pid] === false }"
+                     @click="toggleSelection(pid)" :id="'photo-' + pid.slice(0,8)">
+                  <div class="photo-wrap">
+                    <img :src="'/api/photos/' + pid + '/image'" :alt="pid" loading="lazy"
+                         class="photo-img" />
+                    <div class="photo-overlay">
+                      <span class="overlay-icon" x-text="selections[pid] ? '✅' : selections[pid] === false ? '❌' : '○'"></span>
+                    </div>
+                  </div>
+                  <div class="photo-info">
+                    <span class="mono tiny" x-text="pid.slice(0,8) + '...'"></span>
+                    <span class="score-chip" x-text="getPhotoMeta(pid)?.ml_score != null ? 'ML: ' + (getPhotoMeta(pid).ml_score * 100).toFixed(0) + '%' : 'blur: ' + getPhotoMeta(pid)?.blur_score?.toFixed(0)"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 🗂 CLUSTER VIEW -->
+          <div x-show="viewMode === 'cluster'">
+            <template x-for="cluster in reviewData.clusters" :key="cluster.id">
+              <div class="cluster-section">
+                <div class="cluster-header" @click="toggleCluster(cluster.id)">
+                  <div class="cluster-title">
+                    <span class="cluster-badge" x-text="cluster.id"></span>
+                    <h3 x-text="cluster.name"></h3>
+                    <span class="muted small" x-text="cluster.photo_count + ' ภาพ'"></span>
+                  </div>
+                  <span x-text="expandedClusters[cluster.id] ? '▲' : '▼'"></span>
+                </div>
+
+                <div class="photo-grid" x-show="expandedClusters[cluster.id]" x-transition>
+                  <template x-for="photo in cluster.photos" :key="photo.id">
+                    <div class="photo-card"
+                         :class="{ selected: selections[photo.id], rejected: selections[photo.id] === false, failed: !photo.passed_technical_filter }"
+                         @click="toggleSelection(photo.id)" :id="'photo-' + photo.id.slice(0,8)">
+                      <div class="photo-wrap">
+                        <img :src="photo.image_url" :alt="photo.filename" loading="lazy" class="photo-img" />
+                        <div class="photo-overlay">
+                          <span class="overlay-icon" x-text="selections[photo.id] ? '✅' : selections[photo.id] === false ? '❌' : '○'"></span>
+                        </div>
+                        <div class="rank-badge" x-show="photo.rank === 1">🥇</div>
+                        <div class="fail-badge" x-show="!photo.passed_technical_filter">⚠</div>
+                      </div>
+                      <div class="photo-info">
+                        <span class="mono tiny" x-text="'#' + photo.rank + ' ' + (photo.filename || photo.id.slice(0,6))"></span>
+                        <span class="score-chip"
+                              x-text="photo.ml_score != null ? 'ML ' + (photo.ml_score*100).toFixed(0)+'%' : 'B:'+photo.blur_score?.toFixed(0)">
+                        </span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- 📋 ALL VIEW -->
+          <div x-show="viewMode === 'all'">
+            <div class="photo-grid">
+              <template x-for="cluster in reviewData.clusters" :key="cluster.id">
+                <template x-for="photo in cluster.photos" :key="photo.id">
+                  <div class="photo-card"
+                       :class="{ selected: selections[photo.id], rejected: selections[photo.id] === false, failed: !photo.passed_technical_filter }"
+                       @click="toggleSelection(photo.id)" :id="'photo-all-' + photo.id.slice(0,8)">
+                    <div class="photo-wrap">
+                      <img :src="photo.image_url" :alt="photo.filename" loading="lazy" class="photo-img" />
+                      <div class="photo-overlay">
+                        <span class="overlay-icon" x-text="selections[photo.id] ? '✅' : selections[photo.id] === false ? '❌' : '○'"></span>
+                      </div>
+                    </div>
+                    <div class="photo-info">
+                      <span class="mono tiny cluster-tag" x-text="cluster.id"></span>
+                      <span class="score-chip tiny" x-text="photo.ml_score != null ? 'ML '+( photo.ml_score*100).toFixed(0)+'%' : 'B:'+photo.blur_score?.toFixed(0)"></span>
+                    </div>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </div>
+
+          <!-- Save selections -->
+          <div class="save-bar">
+            <span class="muted" x-text="Object.keys(selections).length + ' ภาพที่ตัดสินใจ'"></span>
+            <button class="btn btn-accent" @click="saveSelections()" id="save-selections-btn">
+              💾 บันทึกการคัดเลือก
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Loading -->
+      <div class="loader" x-show="reviewLoading">
+        <div class="spinner"></div>
+        <p>กำลังโหลดข้อมูล...</p>
+      </div>
+    </section>
+
+
+    <!-- ╔═════════════════╗ -->
+    <!-- ║  DASHBOARD PAGE  ║ -->
+    <!-- ╚═════════════════╝ -->
+    <section x-show="page === 'dashboard'" x-transition class="page">
+      <div class="page-header">
+        <h1>Dashboard &amp; ประวัติ</h1>
+        <p class="page-sub">ภาพรวมระบบและสถานะ ML</p>
+      </div>
+
+      <div class="stats-grid" x-show="dashStats">
+        <div class="stat-card">
+          <div class="stat-icon">📦</div>
+          <div class="stat-num" x-text="dashStats?.total_batches || 0"></div>
+          <div class="stat-label">Batch ทั้งหมด</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🖼</div>
+          <div class="stat-num" x-text="dashStats?.total_photos || 0"></div>
+          <div class="stat-label">ภาพทั้งหมด</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div class="stat-num" x-text="dashStats?.total_selections || 0"></div>
+          <div class="stat-label">การคัดเลือก</div>
+        </div>
+        <div class="stat-card" :class="dashStats?.ml_mode === 'active' ? 'stat-ok' : 'stat-warn'">
+          <div class="stat-icon">🤖</div>
+          <div class="stat-num" x-text="dashStats?.ml_mode === 'active' ? 'ACTIVE' : 'COLD START'"></div>
+          <div class="stat-label">โหมด ML</div>
+        </div>
+      </div>
+
+      <!-- Active model info -->
+      <div class="card" x-show="dashStats?.active_model">
+        <h2 class="card-title">🤖 โมเดล ML ที่ใช้งาน</h2>
+        <div class="model-info">
+          <div class="info-row">
+            <span class="label-sm">ฝึกเมื่อ</span>
+            <span class="mono" x-text="dashStats?.active_model?.trained_at?.replace('T',' ').slice(0,19)"></span>
+          </div>
+          <div class="info-row">
+            <span class="label-sm">ตัวอย่างฝึก</span>
+            <span class="mono" x-text="dashStats?.active_model?.sample_count + ' ภาพ'"></span>
+          </div>
+          <div class="info-row">
+            <span class="label-sm">ความแม่นยำ (Val)</span>
+            <span class="mono teal" x-text="dashStats?.active_model?.val_score != null ? (dashStats.active_model.val_score * 100).toFixed(1) + '%' : '—'"></span>
+          </div>
+        </div>
+        <button class="btn btn-secondary" @click="triggerRetrain()" id="retrain-btn">
+          🔁 Retrain ทันที
+        </button>
+      </div>
+
+      <!-- Model versions -->
+      <div class="card" x-show="modelVersions.length">
+        <h2 class="card-title">📜 ประวัติโมเดล</h2>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>ฝึกเมื่อ</th>
+              <th>ตัวอย่าง</th>
+              <th>Val Score</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="v in modelVersions" :key="v.id">
+              <tr :class="v.is_active ? 'row-active' : ''">
+                <td class="mono" x-text="v.id"></td>
+                <td class="mono small" x-text="v.trained_at?.slice(0,16).replace('T',' ')"></td>
+                <td x-text="v.sample_count"></td>
+                <td x-text="v.val_score != null ? (v.val_score*100).toFixed(1)+'%' : '—'"></td>
+                <td><span class="badge" :class="v.is_active ? 'badge-ok' : 'badge-info'" x-text="v.is_active ? 'Active' : 'Archive'"></span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Config -->
+      <div class="card" x-show="configData">
+        <h2 class="card-title">⚙ การตั้งค่าปัจจุบัน</h2>
+        <pre class="config-pre mono small" x-text="JSON.stringify(configData, null, 2)"></pre>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast notification -->
+  <div class="toast" :class="{ show: toast.show }" x-text="toast.message"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

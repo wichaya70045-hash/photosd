@@ -1,0 +1,38 @@
+# ============================================================
+# AI Photo Selection System — Configuration
+# ============================================================
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+
+paths:
+  watch_folder: "data/watch_inbox"
+  upload_folder: "data/uploads"
+  models_folder: "data/models"
+  database: "data/photos.db"
+
+quality_filter:
+  blur_threshold: 100.0          # Laplacian variance; below = blurry
+  exposure_over_threshold: 0.15  # fraction of pixels at 255
+  exposure_under_threshold: 0.15 # fraction of pixels at 0
+  obstruction_edge_density: 0.05 # low edge density in center = obstruction
+
+clustering:
+  time_gap_minutes: 15           # gap between photos to split clusters
+  perceptual_hash_distance: 10   # max hamming distance for same cluster
+
+ml:
+  backbone: "mobilenet_v3_small"  # mobilenet_v3_small | resnet18
+  embedding_dim: 576              # MobileNetV3-Small penultimate dim
+  cold_start_min_samples: 50      # use rule-based ranking below this
+  retrain_every_n_batches: 5      # trigger retraining after N completed batches
+  classifier: "logistic"          # logistic | mlp
+
+upload:
+  chunk_size_bytes: 2097152       # 2MB per chunk
+  max_batch_size: 900
+
+shortlist:
+  top_n_per_batch: 20             # total photos in shortlist

@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+venv/
+env/
+.venv/
+ENV/
+
+# Database & Uploads
+data/photos.db
+data/photos.db-journal
+data/photos.db-wal
+data/photos.db-shm
+data/uploads/
+data/watch_inbox/*
+!data/watch_inbox/.gitkeep
+data/models/*.joblib
+data/models/*.pkl
+data/models/*.pt
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# IDEs
+.vscode/
+.idea/
+.agents/
